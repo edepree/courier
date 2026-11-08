@@ -103,13 +103,12 @@ class MetraSource:
         await self._refresh()
         schedule = self._schedule
         assert schedule is not None  # noqa: S101 - start() runs first
-        today = now.astimezone(gtfs.METRA_TZ).date()
         checks = []
 
         if self._settings.trains:
             feed = await self._client.fetch_feed("tripupdates")
             for train in self._settings.trains:
-                checks.extend(self._train_checks(feed, schedule, train, today))
+                checks.extend(self._train_checks(feed, schedule, train, now))
 
         if self._settings.lines:
             seen: set[tuple[str, str]] = set()
@@ -120,8 +119,9 @@ class MetraSource:
         return checks
 
     def _train_checks(
-        self, feed: events.FeedMessage, schedule: gtfs.Schedule, train: settings.Train, today: datetime.date
+        self, feed: events.FeedMessage, schedule: gtfs.Schedule, train: settings.Train, now: datetime.datetime
     ) -> list[message.Check]:
+        today = now.astimezone(gtfs.METRA_TZ).date()
         trips = events.train_trips(feed, schedule, train.line, train.number)
         keys = message.event_keys(f"{train.line}{train.number}", train.events)
         checks = []
@@ -133,9 +133,7 @@ class MetraSource:
         for tu in trips:
             for key, event in zip(keys, train.events, strict=True):
                 if isinstance(event, settings.TrainDelayed):
-                    matched, reason = events.delay_message(
-                        tu, schedule, train.line, train.number, event, today, self._tz
-                    )
+                    matched, reason = events.delay_message(tu, schedule, train.line, train.number, event, now, self._tz)
                 else:
                     matched, reason = events.cancel_message(tu, train.line, train.number, today)
                 checks.append(message.Check(key, event, matched, reason))

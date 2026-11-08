@@ -61,6 +61,8 @@ Trains are identified by `line` and `number`, and lines by `id` (BNSF, HC, MD-N,
 | `train_cancelled` | train | the train is cancelled |
 | `service_alert` | line | Metra has an alert in effect for the line |
 
+Metra keeps reporting some trains for up to an hour after they arrive, with a last-stop delay that grows with the clock. A train whose only remaining stop is its last one, more than 15 minutes after that stop's scheduled time, does not match `train_delayed`.
+
 With the default `max_per_window` of 1, a delay that grows sends no new notification. Set a higher `max_per_window` on `train_delayed` for updates.
 
 > [!IMPORTANT]

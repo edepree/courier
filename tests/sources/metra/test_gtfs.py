@@ -20,6 +20,8 @@ from courier.sources.metra import gtfs
         ("MD-W_MW2204_V2_AA", ("MD-W", 2204)),
         ("HC_HC502_V1_AA", ("HC", 502)),
         ("SWS_SW702_V1_AA", ("SWS", 702)),
+        ("BNSF_1200_8_2009_5682524", ("BNSF", 1200)),
+        ("UP-NW_612_8_2009_5682524", ("UP-NW", 612)),
         ("junk", None),
     ],
 )
@@ -50,6 +52,15 @@ def test_load_schedule(bn1204_zip):
     assert "SWS" in s.lines
 
     assert not gtfs.load_schedule(bn1204_zip, {("BNSF", 1254)}).arrivals
+
+
+def test_load_schedule_new_trip_id_format(make_gtfs_zip: Callable[[list[str], list[str]], bytes]) -> None:
+    trip_id = "BNSF_1204_8_2009_5682524"
+    zip_bytes = make_gtfs_zip([trip_id], [f"{trip_id},  05:58:00,  05:58:00,  CICERO,  25,  0,  0,  0,  0,  1,  0"])
+    schedule = gtfs.load_schedule(zip_bytes, {("BNSF", 1204)})
+
+    assert schedule.trips[("BNSF", 1204)] == {trip_id}
+    assert schedule.arrivals[(trip_id, 25)] == 5 * 3600 + 58 * 60
 
 
 def test_load_schedule_bad_zip_raises_value_error():
