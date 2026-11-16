@@ -13,12 +13,28 @@ FeedMessage = gtfs_realtime_pb2.FeedMessage
 TripUpdate = gtfs_realtime_pb2.TripUpdate
 SKIPPED = TripUpdate.StopTimeUpdate.SKIPPED
 
+# Metra keeps reporting some trains after they arrive, with one last-stop update whose time drifts just ahead of now
+FINISHED_AFTER = datetime.timedelta(minutes=15)
+
 
 def _start_date(tu: TripUpdate) -> datetime.date | None:
     try:
         return datetime.date.fromisoformat(tu.trip.start_date)
     except ValueError:  # start_date is optional in GTFS-realtime
         return None
+
+
+def _last_sequence(schedule: gtfs.Schedule, trip_id: str) -> int | None:
+    """Returns the highest scheduled stop sequence of a trip, or None if the trip has no stop times."""
+    last = None
+
+    for arrival_trip_id, sequence in schedule.arrivals:
+        if arrival_trip_id != trip_id:
+            continue
+        if last is None or sequence > last:
+            last = sequence
+
+    return last
 
 
 def train_trips(feed: FeedMessage, schedule: gtfs.Schedule, line: str, number: int) -> list[TripUpdate]:
@@ -53,12 +69,13 @@ def delay_message(  # noqa: PLR0913, PLR0917 - pure function, takes every input 
     line: str,
     number: int,
     event: settings.TrainDelayed,
-    today: datetime.date,
+    now: datetime.datetime,
     tz: ZoneInfo,
 ) -> message.Decision:
     """Builds a delay message when today's trip is late enough at its next stop.
 
-    The next stop is the first update that is not skipped, has a time, and is in the schedule.
+    The next stop is the first update that is not skipped, has a time, and is in the schedule. A trip whose next
+    stop is its last one, more than `FINISHED_AFTER` past that stop's scheduled time, is treated as finished.
 
     Args:
         tu: The trip update.
@@ -66,12 +83,13 @@ def delay_message(  # noqa: PLR0913, PLR0917 - pure function, takes every input 
         line: Line id.
         number: Train number.
         event: The delay event config.
-        today: Today in Metra time.
+        now: Current time.
         tz: Zone for the expected time in the body.
 
     Returns:
         The message or None, and a one-line reason either way.
     """
+    today = now.astimezone(gtfs.METRA_TZ).date()
     start = _start_date(tu)
     if start is None:
         return None, "trip has no start date"
@@ -96,6 +114,11 @@ def delay_message(  # noqa: PLR0913, PLR0917 - pure function, takes every input 
 
     expected = next_stop.arrival.time or next_stop.departure.time
     scheduled = gtfs.scheduled_at(start, schedule.arrivals[(tu.trip.trip_id, next_stop.stop_sequence)])
+    is_last_stop = next_stop.stop_sequence == _last_sequence(schedule, tu.trip.trip_id)
+    minutes_past = int((now - scheduled).total_seconds() // 60)
+    if is_last_stop and now - scheduled > FINISHED_AFTER:
+        return None, f"only the last stop is left, {minutes_past} min past its scheduled time"
+
     minutes = int((expected - scheduled.timestamp()) // 60)
     if minutes < event.minutes:
         return None, f"{minutes} min late < {event.minutes}"

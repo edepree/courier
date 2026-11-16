@@ -11,7 +11,8 @@ import zoneinfo
 
 METRA_TZ = zoneinfo.ZoneInfo("America/Chicago")
 
-_TRIP_ID = re.compile(r"^(?P<line>[^_]+)_[A-Z]+(?P<number>\d+)_")
+# legacy BNSF_BN1254_V2_A, and BNSF_1254_8_2009_5682524 from Metra's Developer Change Notice v2.0
+_TRIP_ID = re.compile(r"^(?P<line>[^_]+)_[A-Z]*(?P<number>\d+)_")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -35,7 +36,7 @@ def parse_trip_id(trip_id: str) -> tuple[str, int] | None:
     """Splits a trip id into (line, train number).
 
     Args:
-        trip_id: GTFS trip id such as ``BNSF_BN1254_V2_A``.
+        trip_id: GTFS trip id such as ``BNSF_BN1254_V2_A`` or ``BNSF_1254_8_2009_5682524``.
 
     Returns:
         The (line, number) pair, or None if the id does not match.
